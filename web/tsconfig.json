@@ -21,5 +21,6 @@
   },
   "include": [
     "src"
-  ]
+  ],
+  "extends": "C:/Users/amber/Desktop/git_repo/NewSquid/SquidRID/web/tsconfig.json"
 }
