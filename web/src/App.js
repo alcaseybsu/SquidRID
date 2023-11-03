@@ -42,8 +42,6 @@ import { idtype_t, uatype_t, external_t } from "./squid";
 //Try adding Cesium
 //import * as Cesium from "cesium";
 
-//here are some changes so I can commit and push
-
 const serial = new BrowserSerial();
 
 const Commands = {
