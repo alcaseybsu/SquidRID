@@ -39,6 +39,8 @@ import { BrowserSerial } from "browser-serial";
 import Control from "react-leaflet-custom-control";
 import { Dropdown, toCombinedPath, fromPath, toPath, inflatePath, deflatePath } from "./common";
 import { idtype_t, uatype_t, external_t } from "./squid";
+//Try adding Cesium
+//import * as Cesium from "cesium";
 
 //here are some changes so I can commit and push
 
@@ -158,6 +160,31 @@ function App() {
   const [showPath, setShowPath] = useState(false);
   const [error, setError] = useState(false);
   const [first, setFirst] = useState(true);
+
+  /*
+  // Cesium viewer
+  const viewer = new Cesium.Viewer("cesiumContainer");
+
+  const flightPath = new Cesium.PolyLineGraphics({    
+    positions: Cesium.Cartesian3.fromDegreesArrayHeights([0, 0, 0]),
+    // array = longitude, latitude, height
+    // add the coordiantes of the flight path here
+    width: 2,
+    material: Cesium.Color.RED,
+  });
+
+  viewer.entities.add({
+    name: "Flight Path",
+    polyline: flightPath,
+  });
+}, []);
+
+// later in the code...
+return(
+  <div id="cesiumContainer" style={{ width: '100%', height: '100vh' }}></div>
+);
+}
+*/
 
   const serialCommand = useCallback((command, args = []) => {
     if (connected) {

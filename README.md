@@ -32,7 +32,7 @@ Squid Mode can simulate many aspects of the RemoteID protocol for a single drone
 
 ![](docs/sim.png)
 
-## Pest Mod
+## Pest Mode
 
 In Pest Mode, SquidRID will spawns x rows every n seconds that are both configurable from the configurator.
 
