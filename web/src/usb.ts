@@ -15,7 +15,7 @@
  * See the License for the specific language governing
  * permissions and limitations under the License.
  */
-'use strict';
+
 
 type ParityType = 'none' | 'even' | 'odd' | 'mark' | 'space';
 
@@ -117,7 +117,7 @@ function findEndpoint(iface: USBInterface, direction: USBDirection):
     USBEndpoint {
   const alternate = iface.alternates[0];
   for (const endpoint of alternate.endpoints) {
-    if (endpoint.direction == direction) {
+    if (endpoint.direction === direction) {
       return endpoint;
     }
   }
@@ -153,20 +153,27 @@ class UsbEndpointUnderlyingSource implements UnderlyingSource<Uint8Array> {
   /**
    * Reads a chunk of data from the device.
    *
-   * @param {ReadableStreamDefaultController} controller
+   * @param {ReadableStreamDefaultController<Uint8Array>} controller
    */
-  pull(controller: ReadableStreamDefaultController): void {
+  pull(controller: ReadableStreamController<Uint8Array>): void {
     const chunkSize = controller.desiredSize || 64;
     this.device_.transferIn(this.endpoint_.endpointNumber, chunkSize).then(
-        (result) => {
-          controller.enqueue(result.data);
-        },
-        (error) => {
-          controller.error(error.toString());
+      (result) => {
+        if (result.data !== undefined) {
+          // Create a new Uint8Array from the ArrayBuffer of the DataView            
+          const uint8Array = new Uint8Array(result.data.buffer);
+          controller.enqueue(uint8Array);
+        } else {
+          controller.error('Unable to read data from device - undefined data');
           this.onError_();
-        });
+        }
+      },
+      (error) => {
+        controller.error(error.toString());
+        this.onError_();
+      }
+    );
   }
-}
 
 /**
  * Implementation of the underlying sink API[2] which writes data to a USB
@@ -174,6 +181,8 @@ class UsbEndpointUnderlyingSource implements UnderlyingSource<Uint8Array> {
  *
  * [2]: https://streams.spec.whatwg.org/#underlying-sink-api
  */
+}
+
 class UsbEndpointUnderlyingSink implements UnderlyingSink<Uint8Array> {
   private device_: USBDevice;
   private endpoint_: USBEndpoint;
@@ -205,12 +214,16 @@ class UsbEndpointUnderlyingSink implements UnderlyingSink<Uint8Array> {
     try {
       const result =
           await this.device_.transferOut(this.endpoint_.endpointNumber, chunk);
-      if (result.status != 'ok') {
+      if (result.status !== 'ok') {
         controller.error(result.status);
         this.onError_();
       }
     } catch (error) {
+      if (error instanceof Error) {
       controller.error(error.toString());
+      } else {
+        controller.error('An unknown error occured.');
+      }
       this.onError_();
     }
   }
@@ -225,9 +238,9 @@ export class SerialPort {
   private inEndpoint_: USBEndpoint;
   private outEndpoint_: USBEndpoint;
 
-  private serialOptions_: SerialOptions;
-  private readable_: ReadableStream<Uint8Array> | null;
-  private writable_: WritableStream<Uint8Array> | null;
+  private serialOptions_: SerialOptions | undefined;
+  private readable_: ReadableStream<Uint8Array> | null | undefined;
+  private writable_: WritableStream<Uint8Array> | null | undefined;
   private outputSignals_: SerialOutputSignals;
 
   /**
@@ -264,16 +277,25 @@ export class SerialPort {
    */
   public get readable(): ReadableStream<Uint8Array> | null {
     if (!this.readable_ && this.device_.opened) {
-      this.readable_ = new ReadableStream(
+      if (this.serialOptions_ === undefined) {
+        throw new Error('Serial options are not initialized.');
+      }
+      let queuingStrategy;
+      if (this.serialOptions_) {
+        queuingStrategy = new ByteLengthQueuingStrategy({
+          highWaterMark: this.serialOptions_.bufferSize,
+        });
+      }
+        this.readable_ = new ReadableStream<Uint8Array>(        
           new UsbEndpointUnderlyingSource(
               this.device_, this.inEndpoint_, () => {
                 this.readable_ = null;
               }),
-          new ByteLengthQueuingStrategy({
-            highWaterMark: this.serialOptions_.bufferSize,
-          }));
-    }
-    return this.readable_;
+          queuingStrategy
+          
+        );
+      }
+    return this.readable_ || null;
   }
 
   /**
@@ -283,6 +305,9 @@ export class SerialPort {
    */
   public get writable(): WritableStream<Uint8Array> | null {
     if (!this.writable_ && this.device_.opened) {
+      if (this.serialOptions_===undefined) {
+        throw new Error('Serial options are not initialized.');
+      }
       this.writable_ = new WritableStream(
           new UsbEndpointUnderlyingSink(
               this.device_, this.outEndpoint_, () => {
@@ -292,7 +317,7 @@ export class SerialPort {
             highWaterMark: this.serialOptions_.bufferSize,
           }));
     }
-    return this.writable_;
+    return this.writable_ || null;
   }
 
   /**
@@ -320,13 +345,16 @@ export class SerialPort {
 
       await this.setLineCoding();
       await this.setSignals({dtr: true});
-    } catch (error) {
+    } catch (error: unknown) {
       if (this.device_.opened) {
         await this.device_.close();
       }
-      throw new Error('Error setting up device: ' + error.toString());
+      if (error instanceof Error) {
+        throw new Error('Error setting up device: ' + error.toString());
+      } else {
+        throw new Error('Error setting up device: An unknown error occurred.');
+      }
     }
-  }
 
   /**
    * Closes the port.
@@ -334,6 +362,8 @@ export class SerialPort {
    * @return {Promise<void>} A promise that will resolve when the port is
    * closed.
    */
+
+  }
   public async close(): Promise<void> {
     const promises = [];
     if (this.readable_) {
@@ -356,6 +386,7 @@ export class SerialPort {
    * @return {Promise<SerialOptions>} A promise that will resolve with an object
    * containing the device serial options
    */
+   
   public async getInfo(): Promise<SerialOptions> {
     // Ref: USB CDC specification version 1.1 §6.2.13.
     const response = await this.device_.controlTransferIn({
@@ -433,6 +464,11 @@ export class SerialPort {
    * not valid
    */
   private validateOptions(): void {
+    if (!this.serialOptions_) {
+      // handle the case where this.serialOptions_is undefined
+      throw new Error('Serial options are not initialized.');
+    }
+
     if (!this.isValidBaudRate(this.serialOptions_.baudRate)) {
       throw new RangeError('invalid Baud Rate ' + this.serialOptions_.baudRate);
     }
@@ -493,6 +529,9 @@ export class SerialPort {
    * @return {Promise} a promise that will resolve when the options are set
    */
   private async setLineCoding(): Promise<void> {
+    if (this.serialOptions_ === undefined) {
+      throw new Error('Serial options are not initialized.');
+    }
     // Ref: USB CDC specification version 1.1 §6.2.12.
     const buffer = new ArrayBuffer(7);
     const view = new DataView(buffer);
@@ -509,7 +548,7 @@ export class SerialPort {
       'value': 0x00,
       'index': this.controlInterface_.interfaceNumber,
     }, buffer);
-    if (result.status != 'ok') {
+    if (result.status !== 'ok') {
       throw new DOMException('NetworkError', 'Failed to set line coding.');
     }
   }
@@ -521,6 +560,10 @@ export class SerialPort {
    * @return {object} The options
    */
   private readLineCoding(buffer: ArrayBuffer): SerialOptions {
+    if (this.serialOptions_ === undefined) {
+
+      throw new Error('Serial options are not initialized.');
+    }
     const options: SerialOptions = this.serialOptions_;
     const view = new DataView(buffer);
     options.baudRate = view.getUint32(0, true);

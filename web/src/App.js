@@ -31,7 +31,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  **/
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import './App.css';
 import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, useMapEvents, Circle, Polyline, FeatureGroup, Popup } from 'react-leaflet'
@@ -39,7 +39,6 @@ import { BrowserSerial } from "browser-serial";
 import Control from "react-leaflet-custom-control";
 import { Dropdown, toCombinedPath, fromPath, toPath, inflatePath, deflatePath } from "./common";
 import { idtype_t, uatype_t, external_t } from "./squid";
-
 
 const serial = new BrowserSerial();
 
@@ -158,22 +157,14 @@ function App() {
   const [error, setError] = useState(false);
   const [first, setFirst] = useState(true);
 
-  const serialCommand = (command, args = []) => {
+  const serialCommand = useCallback((command, args = []) => {
     if (connected) {
       const cmd = ["$", command].join("") + (args.length ? "|" + args.join("|") : "");
       console.log("[serial]", "Writing", cmd);
       serial.write(cmd);
     }
-  }
+  }, [connected]); 
 
-  const handleSync = (o = true) => {
-    if (o && dataUpdated) {
-      handleDataUpdate();
-    } else {
-      serialCommand(Commands.data);
-      serialCommand(Commands.current);
-    }
-  }
 
   const handleSerialConnect = () => {
     setError(false);
@@ -194,12 +185,13 @@ function App() {
     }
   }
 
+
   const handleData = name => event => {
     setDataUpdated(true);
     setData({ ...data, [name]: event.target.value });
   }
 
-  const handleDataUpdate = (o = {}) => {
+  const handleDataUpdate = useCallback((o = {}) => {
     const dt = { ...data, ...o }
     serialCommand(Commands.store_data, [
       // Defaults
@@ -207,7 +199,16 @@ function App() {
       // External
       dt.ext_mode || 0, dt.ext_baud || 0, dt.ext_rx_pin || 0, dt.ext_tx_pin || 0, dt.ext_shift_mode || 0, dt.ext_shift_radius || 0, dt.ext_shift_min || 0, dt.ext_shift_max || 0
     ]);
-  }
+  }, [data, serialCommand, appMode]); 
+
+  const handleSync = useCallback((o = true) => {
+    if (o && dataUpdated) {
+      handleDataUpdate();
+    } else {
+      serialCommand(Commands.data);
+      serialCommand(Commands.current);
+    }
+  }, [dataUpdated, handleDataUpdate, serialCommand]);
 
   const handleModeUpdate = (o = {}) => {
     const dt = { appMode, flyMode, pathMode, spd: position.spd, alt: position.alt, ...o }
@@ -279,7 +280,7 @@ function App() {
     handleModeUpdate();
   }
 
-  const handleSerialValue = (value) => {
+  const handleSerialValue = useCallback((value) => {
     if (!value) {
       return;
     }
@@ -328,9 +329,9 @@ function App() {
         console.log("[path]", pc, pp);
         setPath(pp);
 
-      }
-    }
+      }    
   }
+  }, [data, first, handleSync, pest, position]); // Add any dependencies here
 
   const handleMapEvent = e => {
     if (e.type === "click") {
@@ -373,7 +374,6 @@ function App() {
     setMapMode(m);
   }
 
-
   useEffect(() => {
     if (connected) {
       window.squid = {};
@@ -383,7 +383,7 @@ function App() {
       });
       handleSync();
     }
-  }, [connected]);
+  }, [ connected, handleSerialValue, serialCommand, handleSync]); // Add any dependencies here
 
   if (!connected) {
     return (
@@ -638,8 +638,8 @@ function App() {
           <Display condition={appMode === AppMode.Pest}>
             <div className="map-control inline">
 
-              <RemoteControlButton name="SPW" selected={data.pe_spawn} steps={[5, 10, 20, 30, 45]} onChange={handlePestSpawn} />
-              <RemoteControlButton name="RNG" steps={[1, 2, 3, 4, 5, 6]} onChange={handlePestRadius} />
+              <RemoteControlButton name="SPW" selected={data.pe_spawn} steps={[5, 10, 20, 30, 45]} onChange={handlePestSpawn} />,
+              <RemoteControlButton name="RNG" steps={[1, 2, 3, 4, 5, 6]} onChange={handlePestRadius} />,
               <p>RANGE {data.pe_radius || MinRadius}m EVERY {data.pe_spawn}s</p>
             </div>
           </Display>
@@ -647,9 +647,8 @@ function App() {
       </MapContainer >
     </div >
   );
-}
+}  
+
 
 export default App;
-
-
 
