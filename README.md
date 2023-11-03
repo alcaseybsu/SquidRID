@@ -68,6 +68,6 @@ While many parts are ready to use there a few that are still under development:
 
 ## Configurator 
 
-![](docs/configurator.png))
+![](docs/configurator.png)
 
 The Configurator is an easy way to configure your SquidRID Testing Device. Go to [https://squidrid.flyandi.net](https://squidrid.flyandi.net) to access the latest version or run it locally. 
